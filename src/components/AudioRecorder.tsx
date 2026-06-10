@@ -1,0 +1,200 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect } from "react";
+import { SpeechRecognizer } from "@/lib/speech";
+import { saveTranscription } from "@/lib/firestore";
+import { useAuth } from "@/contexts/AuthContext";
+
+export default function AudioRecorder() {
+  const { user } = useAuth();
+  const [isRecording, setIsRecording] = useState(false);
+  const [finalText, setFinalText] = useState("");
+  const [interimText, setInterimText] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+  const recognizerRef = useRef<SpeechRecognizer | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isSupported = SpeechRecognizer.isSupported();
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [finalText, interimText]);
+
+  const startRecording = useCallback(() => {
+    setError("");
+    setSavedMsg("");
+    const recognizer = new SpeechRecognizer(
+      (transcript, isFinal) => {
+        if (isFinal) {
+          setFinalText((prev) => prev + transcript);
+          setInterimText("");
+        } else {
+          setInterimText(transcript);
+        }
+      },
+      (err) => {
+        setError(err);
+        setIsRecording(false);
+      },
+      () => {
+        setIsRecording(false);
+        setInterimText("");
+      }
+    );
+    recognizerRef.current = recognizer;
+    recognizer.start();
+    setIsRecording(true);
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    recognizerRef.current?.stop();
+    recognizerRef.current = null;
+    setIsRecording(false);
+    setInterimText("");
+  }, []);
+
+  const handleSave = async () => {
+    if (!user || !finalText.trim()) return;
+    setSaving(true);
+    try {
+      await saveTranscription(user.uid, finalText.trim());
+      setSavedMsg("保存しました！");
+      setFinalText("");
+      setTimeout(() => setSavedMsg(""), 3000);
+    } catch {
+      setError("保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownload = () => {
+    const text = finalText.trim();
+    if (!text) return;
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `transcription_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClear = () => {
+    setFinalText("");
+    setInterimText("");
+    setError("");
+    setSavedMsg("");
+  };
+
+  if (!isSupported) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center text-amber-800">
+        <p className="font-medium">このブラウザは音声認識に対応していません。</p>
+        <p className="text-sm mt-1">Google Chrome または Microsoft Edge をご利用ください。</p>
+      </div>
+    );
+  }
+
+  const displayText = finalText + interimText;
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+          {error}
+        </div>
+      )}
+      {savedMsg && (
+        <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">
+          {savedMsg}
+        </div>
+      )}
+
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          readOnly
+          value={displayText}
+          placeholder="録音ボタンを押して話しかけてください..."
+          className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 text-sm resize-none focus:outline-none leading-relaxed"
+        />
+        {interimText && (
+          <div className="absolute bottom-3 left-4 right-4 pointer-events-none">
+            <span className="text-indigo-400 text-sm italic">{interimText}</span>
+          </div>
+        )}
+        {isRecording && (
+          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+            </span>
+            <span className="text-xs text-red-500 font-medium">録音中</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        {!isRecording ? (
+          <button
+            onClick={startRecording}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm6 9a1 1 0 0 1 2 0 8 8 0 0 1-7 7.94V20h3a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2h3v-2.06A8 8 0 0 1 4 10a1 1 0 0 1 2 0 6 6 0 0 0 12 0z" />
+            </svg>
+            録音開始
+          </button>
+        ) : (
+          <button
+            onClick={stopRecording}
+            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white font-medium px-5 py-2.5 rounded-lg transition"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+            録音停止
+          </button>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={!finalText.trim() || saving}
+          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+          </svg>
+          {saving ? "保存中..." : "保存"}
+        </button>
+
+        <button
+          onClick={handleDownload}
+          disabled={!finalText.trim()}
+          className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          ダウンロード
+        </button>
+
+        <button
+          onClick={handleClear}
+          disabled={!displayText}
+          className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 disabled:opacity-40 text-gray-600 font-medium px-5 py-2.5 rounded-lg transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          クリア
+        </button>
+      </div>
+    </div>
+  );
+}

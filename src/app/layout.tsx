@@ -1,0 +1,25 @@
+import type { Metadata } from "next";
+import { Noto_Sans_JP } from "next/font/google";
+import "./globals.css";
+import { AuthProvider } from "@/contexts/AuthContext";
+
+const noto = Noto_Sans_JP({ subsets: ["latin"], weight: ["400", "500", "700"] });
+
+export const metadata: Metadata = {
+  title: "VoiceNote - 音声文字起こし",
+  description: "Web Speech API を使ったリアルタイム音声文字起こしアプリ",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="ja">
+      <body className={`${noto.className} bg-gray-50 min-h-screen`}>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
+    </html>
+  );
+}

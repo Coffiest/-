@@ -3,8 +3,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { SpeechRecognizer, SUPPORTED_LANGUAGES, LangCode } from "@/lib/speech";
 import { translateToJa } from "@/lib/translate";
-import { saveTranscription } from "@/lib/firestore";
+import { saveTranscription, getUserProfile, UserProfile, FREE_SAVES_LIMIT } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
+import PaymentModal from "@/components/PaymentModal";
 
 export default function AudioRecorder() {
   const { user } = useAuth();
@@ -20,6 +21,8 @@ export default function AudioRecorder() {
   const [translateOn, setTranslateOn] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [showMicTip, setShowMicTip] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const recognizerRef = useRef<SpeechRecognizer | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -28,6 +31,11 @@ export default function AudioRecorder() {
 
   useEffect(() => { translateOnRef.current = translateOn; }, [translateOn]);
   useEffect(() => { langRef.current = lang; }, [lang]);
+
+  useEffect(() => {
+    if (!user) return;
+    getUserProfile(user.uid).then(setUserProfile).catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -120,7 +128,17 @@ export default function AudioRecorder() {
     setSaving(true);
     setError("");
     try {
+      // Re-fetch profile to get the latest save count
+      const profile = await getUserProfile(user.uid);
+      setUserProfile(profile);
+      if (!profile.isPaid && profile.saveCount >= FREE_SAVES_LIMIT) {
+        setShowPaymentModal(true);
+        return;
+      }
       await saveTranscription(user.uid, finalText.trim());
+      setUserProfile((prev) =>
+        prev ? { ...prev, saveCount: prev.saveCount + 1 } : prev
+      );
       setSavedMsg("保存しました！");
       setFinalText("");
       setTimeout(() => setSavedMsg(""), 3000);
@@ -172,6 +190,9 @@ export default function AudioRecorder() {
 
   return (
     <div className="space-y-3">
+      {showPaymentModal && (
+        <PaymentModal onClose={() => setShowPaymentModal(false)} />
+      )}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
           {error}
@@ -270,7 +291,16 @@ export default function AudioRecorder() {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 text-right">{finalText.length} 文字</p>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">
+          {userProfile && !userProfile.isPaid && (
+            userProfile.saveCount === 0
+              ? "無料保存：残り 1 回"
+              : "無料保存：使用済み — ¥500 の買い切りプランで無制限保存"
+          )}
+        </span>
+        <span className="text-xs text-gray-400">{finalText.length} 文字</span>
+      </div>
 
       {/* ボタン群 */}
       <div className="flex flex-wrap gap-2">

@@ -14,6 +14,7 @@ export default function TranscriptionHistory() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [copying, setCopying] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -43,6 +44,16 @@ export default function TranscriptionHistory() {
       setError("削除に失敗しました");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleCopy = async (item: Transcription) => {
+    try {
+      await navigator.clipboard.writeText(item.text);
+      setCopying(item.id);
+      setTimeout(() => setCopying(null), 2000);
+    } catch {
+      setError("コピーに失敗しました");
     }
   };
 
@@ -131,6 +142,21 @@ export default function TranscriptionHistory() {
                     </svg>
                   </button>
                 )}
+                <button
+                  onClick={() => handleCopy(item)}
+                  className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition"
+                  title="全文コピー"
+                >
+                  {copying === item.id ? (
+                    <svg className="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </button>
                 <button
                   onClick={() => handleDownload(item)}
                   className="p-1.5 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition"

@@ -31,16 +31,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const isMobile = () =>
-  typeof window !== "undefined" &&
-  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // リダイレクト後の結果を処理
+    // ポップアップブロック時のリダイレクト方式のフォールバック結果を処理
     getRedirectResult(auth).catch(() => {});
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -61,10 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    if (isMobile()) {
-      await signInWithRedirect(auth, provider);
-    } else {
+    try {
       await signInWithPopup(auth, provider);
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      // ポップアップがブロックされた場合のみリダイレクト方式にフォールバック
+      if (code === "auth/popup-blocked") {
+        await signInWithRedirect(auth, provider);
+      } else {
+        throw err;
+      }
     }
   };
 

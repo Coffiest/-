@@ -18,14 +18,25 @@ export interface Transcription {
   userId: string;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`タイムアウト（${ms / 1000}秒）: Firestoreに接続できません。Firebase ConsoleでFirestore Databaseが作成・有効になっているか確認してください。`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 export async function saveTranscription(
   userId: string,
   text: string
 ): Promise<string> {
   if (!userId) throw new Error("userId is empty");
-  const ref = await addDoc(
-    collection(db, "users", userId, "transcriptions"),
-    { text, createdAt: serverTimestamp(), userId }
+  const ref = await withTimeout(
+    addDoc(collection(db, "users", userId, "transcriptions"), {
+      text,
+      createdAt: serverTimestamp(),
+      userId,
+    }),
+    10000
   );
   return ref.id;
 }
@@ -37,7 +48,7 @@ export async function getTranscriptions(
     collection(db, "users", userId, "transcriptions"),
     orderBy("createdAt", "desc")
   );
-  const snapshot = await getDocs(q);
+  const snapshot = await withTimeout(getDocs(q), 10000);
   return snapshot.docs.map((d) => {
     const data = d.data();
     return {
@@ -53,5 +64,8 @@ export async function deleteTranscription(
   userId: string,
   transcriptionId: string
 ): Promise<void> {
-  await deleteDoc(doc(db, "users", userId, "transcriptions", transcriptionId));
+  await withTimeout(
+    deleteDoc(doc(db, "users", userId, "transcriptions", transcriptionId)),
+    10000
+  );
 }

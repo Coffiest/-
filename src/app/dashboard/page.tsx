@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { markUserAsPaid } from "@/lib/firestore";
 import AudioRecorder from "@/components/AudioRecorder";
-import TranscriptionHistory from "@/components/TranscriptionHistory";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -17,7 +16,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Check sessionStorage for payment success flag (set after Stripe redirect + hard reload)
     if (sessionStorage.getItem("justPaid") === "1") {
       sessionStorage.removeItem("justPaid");
       setJustPaid(true);
@@ -25,12 +23,10 @@ export default function DashboardPage() {
       return;
     }
 
-    // Handle Stripe redirect with session_id
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get("session_id");
     if (!sessionId) return;
 
-    // Clean URL immediately so the user doesn't re-trigger on back navigation
     router.replace("/dashboard");
 
     fetch(`/api/verify-payment?session_id=${sessionId}`)
@@ -39,7 +35,6 @@ export default function DashboardPage() {
         if (data.paid) {
           await markUserAsPaid(user.uid);
           sessionStorage.setItem("justPaid", "1");
-          // Hard reload so AudioRecorder picks up the new isPaid=true state
           window.location.replace("/dashboard");
         }
       })
@@ -57,9 +52,6 @@ export default function DashboardPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <AudioRecorder />
       </div>
-
-      <h2 className="text-xl font-bold text-gray-800 mt-10 mb-4">保存した履歴</h2>
-      <TranscriptionHistory />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, startTransition } from "react";
 import { SpeechRecognizer, SUPPORTED_LANGUAGES, LangCode } from "@/lib/speech";
 import { translateToJa } from "@/lib/translate";
 import { saveTranscription, getUserProfile, UserProfile, FREE_SAVES_LIMIT } from "@/lib/firestore";
@@ -23,14 +23,20 @@ export default function AudioRecorder() {
   const [showMicTip, setShowMicTip] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
   const recognizerRef = useRef<SpeechRecognizer | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const translateOnRef = useRef(translateOn);
   const langRef = useRef(lang);
+  const finalTextRef = useRef(finalText);
+  const userRef = useRef(user);
+  const shouldAutoSaveRef = useRef(false);
 
   useEffect(() => { translateOnRef.current = translateOn; }, [translateOn]);
   useEffect(() => { langRef.current = lang; }, [lang]);
+  useEffect(() => { finalTextRef.current = finalText; }, [finalText]);
+  useEffect(() => { userRef.current = user; }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -52,15 +58,51 @@ export default function AudioRecorder() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isRecording]);
 
+  // Auto-save when recording stops (user-initiated stop sets shouldAutoSaveRef)
+  useEffect(() => {
+    if (isRecording || !shouldAutoSaveRef.current) return;
+    shouldAutoSaveRef.current = false;
+
+    const text = finalTextRef.current;
+    const currentUser = userRef.current;
+    if (!text.trim() || !currentUser) return;
+
+    (async () => {
+      setSaving(true);
+      setError("");
+      try {
+        const profile = await getUserProfile(currentUser.uid);
+        setUserProfile(profile);
+        if (!profile.isPaid && profile.saveCount >= FREE_SAVES_LIMIT) {
+          setShowPaymentModal(true);
+          return;
+        }
+        await saveTranscription(currentUser.uid, text.trim());
+        setUserProfile((prev) => prev ? { ...prev, saveCount: prev.saveCount + 1 } : prev);
+        setSavedMsg("保存しました！");
+        setFinalText("");
+        setTimeout(() => setSavedMsg(""), 3000);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("permission-denied") || msg.includes("PERMISSION_DENIED")) {
+          setError("保存に失敗しました: Firestoreのルール設定を確認してください");
+        } else if (msg.includes("not-found")) {
+          setError("Firestoreデータベースが見つかりません");
+        } else {
+          setError(`保存に失敗しました: ${msg}`);
+        }
+      } finally {
+        setSaving(false);
+      }
+    })();
+  }, [isRecording]);
+
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const handleLangChange = useCallback((newLang: LangCode) => {
     setLang(newLang);
-    // 録音中なら recognizer に伝えて即座に切り替え
-    if (recognizerRef.current) {
-      recognizerRef.current.switchLang(newLang);
-    }
+    if (recognizerRef.current) recognizerRef.current.switchLang(newLang);
   }, []);
 
   const startRecording = useCallback(() => {
@@ -72,17 +114,18 @@ export default function AudioRecorder() {
     const recognizer = new SpeechRecognizer(
       async (transcript, isFinal) => {
         if (!isFinal) {
-          setInterimText(transcript);
+          // Low-priority update — won't block button taps on mobile
+          startTransition(() => setInterimText(transcript));
           return;
         }
-        setInterimText("");
+        startTransition(() => setInterimText(""));
         if (translateOnRef.current && langRef.current !== "ja-JP") {
           setTranslating(true);
           const translated = await translateToJa(transcript, langRef.current);
           setTranslating(false);
-          setFinalText((prev) => prev + translated);
+          startTransition(() => setFinalText((prev) => prev + translated));
         } else {
-          setFinalText((prev) => prev + transcript);
+          startTransition(() => setFinalText((prev) => prev + transcript));
         }
       },
       (err) => {
@@ -103,6 +146,8 @@ export default function AudioRecorder() {
   }, [lang]);
 
   const stopRecording = useCallback(() => {
+    // Flag auto-save if there's text
+    shouldAutoSaveRef.current = finalTextRef.current.trim().length > 0;
     recognizerRef.current?.stop();
     recognizerRef.current = null;
   }, []);
@@ -116,43 +161,6 @@ export default function AudioRecorder() {
       setTimeout(() => setCopyMsg(""), 2000);
     } catch {
       setError("クリップボードへのコピーに失敗しました");
-    }
-  };
-
-  const handleSave = async () => {
-    if (!user) {
-      setError("ログインが必要です");
-      return;
-    }
-    if (!finalText.trim()) return;
-    setSaving(true);
-    setError("");
-    try {
-      // Re-fetch profile to get the latest save count
-      const profile = await getUserProfile(user.uid);
-      setUserProfile(profile);
-      if (!profile.isPaid && profile.saveCount >= FREE_SAVES_LIMIT) {
-        setShowPaymentModal(true);
-        return;
-      }
-      await saveTranscription(user.uid, finalText.trim());
-      setUserProfile((prev) =>
-        prev ? { ...prev, saveCount: prev.saveCount + 1 } : prev
-      );
-      setSavedMsg("保存しました！");
-      setFinalText("");
-      setTimeout(() => setSavedMsg(""), 3000);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("permission-denied") || msg.includes("PERMISSION_DENIED")) {
-        setError("保存に失敗しました。Firebase ConsoleのFirestoreルールを確認してください（permission-denied）");
-      } else if (msg.includes("not-found")) {
-        setError("Firestoreデータベースが見つかりません。Firebase ConsoleでFirestoreを有効にしてください");
-      } else {
-        setError(`保存に失敗しました: ${msg}`);
-      }
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -203,6 +211,12 @@ export default function AudioRecorder() {
           {savedMsg}
         </div>
       )}
+      {saving && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600" />
+          自動保存中...
+        </div>
+      )}
       {copyMsg && (
         <div className="bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg px-4 py-3 text-sm">
           {copyMsg}
@@ -222,7 +236,6 @@ export default function AudioRecorder() {
           ))}
         </select>
 
-        {/* 翻訳トグル（日本語選択中は不要なので非表示） */}
         {!isJa && (
           <button
             onClick={() => setTranslateOn((v) => !v)}
@@ -271,7 +284,7 @@ export default function AudioRecorder() {
           readOnly
           value={displayText}
           placeholder="録音ボタンを押して話しかけてください..."
-          className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 text-sm resize-none focus:outline-none leading-relaxed"
+          className="w-full h-56 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 text-sm resize-none focus:outline-none leading-relaxed"
         />
 
         {isRecording && (
@@ -304,7 +317,6 @@ export default function AudioRecorder() {
 
       {/* ボタン群 */}
       <div className="flex flex-wrap gap-2">
-        {/* 録音開始/停止 */}
         {!isRecording ? (
           <button
             onClick={startRecording}
@@ -323,11 +335,11 @@ export default function AudioRecorder() {
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
-            録音停止
+            {finalText.trim() ? "停止して保存" : "録音停止"}
           </button>
         )}
 
-        {/* 全コピー（録音中でも押せる） */}
+        {/* 全コピー */}
         <button
           onClick={handleCopyAll}
           disabled={!displayText}
@@ -337,18 +349,6 @@ export default function AudioRecorder() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
           全コピー
-        </button>
-
-        {/* 保存 */}
-        <button
-          onClick={handleSave}
-          disabled={!finalText.trim() || saving}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg transition"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-          {saving ? "保存中..." : "保存"}
         </button>
 
         {/* ダウンロード */}

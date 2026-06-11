@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { markUserAsPaid } from "@/lib/firestore";
 import AudioRecorder from "@/components/AudioRecorder";
+import TranscriptionHistory from "@/components/TranscriptionHistory";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -56,6 +57,9 @@ export default function DashboardPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <AudioRecorder />
       </div>
+
+      <h2 className="text-xl font-bold text-gray-800 mt-10 mb-4">保存した履歴</h2>
+      <TranscriptionHistory />
     </div>
   );
 }

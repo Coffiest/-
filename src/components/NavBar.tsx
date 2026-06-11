@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
@@ -22,9 +23,7 @@ export default function NavBar() {
       <Link
         href={href}
         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-          active
-            ? "bg-indigo-100 text-indigo-700"
-            : "text-gray-600 hover:bg-gray-100"
+          active ? "bg-indigo-100 text-indigo-700" : "text-gray-600 hover:bg-gray-100"
         }`}
       >
         {icon}
@@ -37,10 +36,21 @@ export default function NavBar() {
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <div className="flex items-center gap-1.5 mr-4">
-            <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
-            <span className="text-xs text-gray-400 font-mono">v{version}</span>
-          </div>
+          {/* ロゴ + ブランド名 */}
+          <Link href="/dashboard" className="flex items-center gap-2 mr-4">
+            <Image
+              src="/logo.png"
+              alt="LogicVoice"
+              width={28}
+              height={28}
+              className="rounded-md"
+            />
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
+              <span className="text-xs text-gray-400 font-mono">v{version}</span>
+            </div>
+          </Link>
+
           {navLink(
             "/dashboard",
             "録音",

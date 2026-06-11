@@ -43,6 +43,7 @@ export default function NavBar() {
               width={28}
               height={28}
               className="rounded-md"
+              style={{ mixBlendMode: "multiply" }}
             />
             <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
           </Link>

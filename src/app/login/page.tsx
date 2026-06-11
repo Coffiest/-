@@ -31,7 +31,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative">
       <div className="mb-8 text-center">
         <div className="flex items-center justify-center gap-3 mb-3">
-          <Image src="/logo.png" alt="LogicVoice" width={52} height={52} className="rounded-xl" />
+          <Image src="/logo.png" alt="LogicVoice" width={52} height={52} className="rounded-xl" style={{ mixBlendMode: "multiply" }} />
           <h1 className="text-3xl font-bold text-indigo-600">LogicVoice</h1>
         </div>
         <p className="text-gray-500 text-sm">音声をテキストに変換して保存</p>

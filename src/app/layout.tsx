@@ -9,9 +9,9 @@ export const metadata: Metadata = {
   title: "LogicVoice - 音声文字起こし",
   description: "Web Speech API を使ったリアルタイム音声文字起こしアプリ",
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
-    shortcut: "/logo.png",
+    icon: "/icon.png",
+    apple: "/icon.png",
+    shortcut: "/icon.png",
   },
 };
 

@@ -7,6 +7,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import AuthForm from "@/components/AuthForm";
+import Footer from "@/components/Footer";
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
@@ -27,7 +28,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative">
       <div className="mb-8 text-center">
         <div className="flex items-center justify-center gap-3 mb-3">
           <Image src="/logo.png" alt="LogicVoice" width={52} height={52} className="rounded-xl" />
@@ -36,6 +37,9 @@ export default function LoginPage() {
         <p className="text-gray-500 text-sm">音声をテキストに変換して保存</p>
       </div>
       <AuthForm />
+      <div className="absolute bottom-0 w-full">
+        <Footer />
+      </div>
     </main>
   );
 }

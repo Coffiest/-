@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 export default function DashboardLayout({
   children,
@@ -33,6 +34,7 @@ export default function DashboardLayout({
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
         {children}
       </main>
+      <Footer />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { version } from "../../package.json";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
@@ -45,10 +44,7 @@ export default function NavBar() {
               height={28}
               className="rounded-md"
             />
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
-              <span className="text-xs text-gray-400 font-mono">v{version}</span>
-            </div>
+            <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
           </Link>
 
           {navLink(

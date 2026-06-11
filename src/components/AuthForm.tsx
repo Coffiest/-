@@ -45,10 +45,19 @@ export default function AuthForm() {
     setLoading(true);
     try {
       await signInWithGoogle();
+      // モバイルはリダイレクトのためここには戻らない場合がある
       router.push("/dashboard");
-    } catch {
-      setError("Googleログインに失敗しました");
-    } finally {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
+        // ユーザーがポップアップを閉じた場合は何もしない
+      } else if (msg.includes("popup-blocked")) {
+        setError("ポップアップがブロックされました。ブラウザの設定を確認してください");
+      } else if (msg.includes("unauthorized-domain")) {
+        setError("このドメインはFirebaseで未承認です。Firebase ConsoleのAuthentication → 承認済みドメインに追加してください");
+      } else {
+        setError("Googleログインに失敗しました。もう一度お試しください");
+      }
       setLoading(false);
     }
   };

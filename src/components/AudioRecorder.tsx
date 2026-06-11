@@ -13,10 +13,10 @@ export default function AudioRecorder() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const recognizerRef = useRef<SpeechRecognizer | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const isSupported = SpeechRecognizer.isSupported();
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -24,9 +24,22 @@ export default function AudioRecorder() {
     }
   }, [finalText, interimText]);
 
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isRecording]);
+
+  const formatTime = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
   const startRecording = useCallback(() => {
     setError("");
     setSavedMsg("");
+    setElapsed(0);
     const recognizer = new SpeechRecognizer(
       (transcript, isFinal) => {
         if (isFinal) {
@@ -39,8 +52,10 @@ export default function AudioRecorder() {
       (err) => {
         setError(err);
         setIsRecording(false);
+        setInterimText("");
       },
       () => {
+        // stop() を呼んだときだけここに来る（自動再起動は speech.ts 内で処理）
         setIsRecording(false);
         setInterimText("");
       }
@@ -53,8 +68,6 @@ export default function AudioRecorder() {
   const stopRecording = useCallback(() => {
     recognizerRef.current?.stop();
     recognizerRef.current = null;
-    setIsRecording(false);
-    setInterimText("");
   }, []);
 
   const handleSave = async () => {
@@ -79,7 +92,7 @@ export default function AudioRecorder() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `transcription_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `logicvoice_${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -89,9 +102,10 @@ export default function AudioRecorder() {
     setInterimText("");
     setError("");
     setSavedMsg("");
+    setElapsed(0);
   };
 
-  if (!isSupported) {
+  if (!SpeechRecognizer.isSupported()) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center text-amber-800">
         <p className="font-medium">このブラウザは音声認識に対応していません。</p>
@@ -100,7 +114,7 @@ export default function AudioRecorder() {
     );
   }
 
-  const displayText = finalText + interimText;
+  const displayText = finalText + (isRecording ? interimText : "");
 
   return (
     <div className="space-y-4">
@@ -123,21 +137,28 @@ export default function AudioRecorder() {
           placeholder="録音ボタンを押して話しかけてください..."
           className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 text-sm resize-none focus:outline-none leading-relaxed"
         />
-        {interimText && (
-          <div className="absolute bottom-3 left-4 right-4 pointer-events-none">
-            <span className="text-indigo-400 text-sm italic">{interimText}</span>
+
+        {/* 録音中ステータスバー */}
+        {isRecording && (
+          <div className="absolute top-3 right-3 flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg px-2.5 py-1 shadow-sm border border-red-100">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+            </span>
+            <span className="text-xs font-mono font-medium text-red-600">{formatTime(elapsed)}</span>
           </div>
         )}
-        {isRecording && (
-          <div className="absolute top-3 right-3 flex items-center gap-1.5">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-            </span>
-            <span className="text-xs text-red-500 font-medium">録音中</span>
+
+        {/* 認識中テキスト */}
+        {isRecording && interimText && (
+          <div className="absolute bottom-3 left-4 right-16 pointer-events-none">
+            <span className="text-indigo-400 text-sm italic opacity-80">{interimText}</span>
           </div>
         )}
       </div>
+
+      {/* 文字数カウント */}
+      <p className="text-xs text-gray-400 text-right">{finalText.length} 文字</p>
 
       <div className="flex flex-wrap gap-3">
         {!isRecording ? (
@@ -186,7 +207,7 @@ export default function AudioRecorder() {
 
         <button
           onClick={handleClear}
-          disabled={!displayText}
+          disabled={!displayText && elapsed === 0}
           className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 disabled:opacity-40 text-gray-600 font-medium px-5 py-2.5 rounded-lg transition"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

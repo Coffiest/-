@@ -6,6 +6,8 @@ export class SpeechRecognizer {
   private onResult: SpeechCallback;
   private onError: SpeechErrorCallback;
   private onEnd: () => void;
+  private stopped = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     onResult: SpeechCallback,
@@ -24,46 +26,75 @@ export class SpeechRecognizer {
     );
   }
 
-  start(): void {
-    if (!SpeechRecognizer.isSupported()) {
-      this.onError("このブラウザは音声認識に対応していません。");
-      return;
-    }
-
+  private createRecognition(): SpeechRecognition {
     const SpeechRecognitionClass =
       window.webkitSpeechRecognition ?? window.SpeechRecognition;
 
-    this.recognition = new SpeechRecognitionClass();
-    this.recognition.lang = "ja-JP";
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
+    const r = new SpeechRecognitionClass();
+    r.lang = "ja-JP";
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
 
-    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+    r.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        this.onResult(result[0].transcript, result.isFinal);
+        this.onResult(event.results[i][0].transcript, event.results[i].isFinal);
       }
     };
 
-    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      const messages: Record<string, string> = {
-        "not-allowed": "マイクへのアクセスが拒否されました。",
-        "no-speech": "音声が検出されませんでした。",
-        "network": "ネットワークエラーが発生しました。",
-        "audio-capture": "マイクが見つかりません。",
-      };
-      this.onError(messages[event.error] ?? `エラー: ${event.error}`);
+    r.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // no-speech / network は無音や一時的な切断なので自動復帰、エラー表示しない
+      if (event.error === "no-speech" || event.error === "network") return;
+      if (event.error === "not-allowed" || event.error === "audio-capture") {
+        this.stopped = true;
+        const messages: Record<string, string> = {
+          "not-allowed": "マイクへのアクセスが拒否されました。",
+          "audio-capture": "マイクが見つかりません。",
+        };
+        this.onError(messages[event.error]);
+      }
     };
 
-    this.recognition.onend = () => {
-      this.onEnd();
+    r.onend = () => {
+      if (this.stopped) {
+        this.onEnd();
+        return;
+      }
+      // ユーザーが停止していなければ自動再起動
+      this.restartTimer = setTimeout(() => {
+        if (!this.stopped) this.restart();
+      }, 200);
     };
 
-    this.recognition.start();
+    return r;
+  }
+
+  private restart(): void {
+    this.recognition = this.createRecognition();
+    try {
+      this.recognition.start();
+    } catch {
+      // already started などは無視
+    }
+  }
+
+  start(): void {
+    if (!SpeechRecognizer.isSupported()) {
+      this.onError("このブラウザは音声認識に対応していません。Chrome または Edge をご利用ください。");
+      return;
+    }
+    this.stopped = false;
+    this.restart();
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     this.recognition?.stop();
     this.recognition = null;
+    this.onEnd();
   }
 }

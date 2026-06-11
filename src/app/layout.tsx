@@ -6,7 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 const noto = Noto_Sans_JP({ subsets: ["latin"], weight: ["400", "500", "700"] });
 
 export const metadata: Metadata = {
-  title: "VoiceNote - 音声文字起こし",
+  title: "LogicVoice - 音声文字起こし",
   description: "Web Speech API を使ったリアルタイム音声文字起こしアプリ",
 };
 

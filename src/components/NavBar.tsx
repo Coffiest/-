@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
+import { version } from "../../package.json";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
@@ -36,7 +37,10 @@ export default function NavBar() {
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <span className="text-lg font-bold text-indigo-600 mr-4">VoiceNote</span>
+          <div className="flex items-center gap-1.5 mr-4">
+            <span className="text-lg font-bold text-indigo-600">LogicVoice</span>
+            <span className="text-xs text-gray-400 font-mono">v{version}</span>
+          </div>
           {navLink(
             "/dashboard",
             "録音",

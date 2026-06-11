@@ -1,22 +1,40 @@
 export type SpeechCallback = (transcript: string, isFinal: boolean) => void;
 export type SpeechErrorCallback = (error: string) => void;
 
+export const SUPPORTED_LANGUAGES = [
+  { code: "ja-JP", label: "日本語" },
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "zh-CN", label: "中文（简体）" },
+  { code: "zh-TW", label: "中文（繁體）" },
+  { code: "ko-KR", label: "한국어" },
+  { code: "fr-FR", label: "Français" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "es-ES", label: "Español" },
+  { code: "pt-BR", label: "Português (BR)" },
+] as const;
+
+export type LangCode = (typeof SUPPORTED_LANGUAGES)[number]["code"];
+
 export class SpeechRecognizer {
   private recognition: SpeechRecognition | null = null;
   private onResult: SpeechCallback;
   private onError: SpeechErrorCallback;
   private onEnd: () => void;
+  private lang: LangCode;
   private stopped = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     onResult: SpeechCallback,
     onError: SpeechErrorCallback,
-    onEnd: () => void
+    onEnd: () => void,
+    lang: LangCode = "ja-JP"
   ) {
     this.onResult = onResult;
     this.onError = onError;
     this.onEnd = onEnd;
+    this.lang = lang;
   }
 
   static isSupported(): boolean {
@@ -31,7 +49,7 @@ export class SpeechRecognizer {
       window.webkitSpeechRecognition ?? window.SpeechRecognition;
 
     const r = new SpeechRecognitionClass();
-    r.lang = "ja-JP";
+    r.lang = this.lang;
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;

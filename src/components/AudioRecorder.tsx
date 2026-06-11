@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { SpeechRecognizer } from "@/lib/speech";
+import { SpeechRecognizer, SUPPORTED_LANGUAGES, LangCode } from "@/lib/speech";
 import { saveTranscription } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -14,6 +14,8 @@ export default function AudioRecorder() {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [lang, setLang] = useState<LangCode>("ja-JP");
+  const [showMicTip, setShowMicTip] = useState(false);
   const recognizerRef = useRef<SpeechRecognizer | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -40,6 +42,7 @@ export default function AudioRecorder() {
     setError("");
     setSavedMsg("");
     setElapsed(0);
+    setShowMicTip(false);
     const recognizer = new SpeechRecognizer(
       (transcript, isFinal) => {
         if (isFinal) {
@@ -55,15 +58,15 @@ export default function AudioRecorder() {
         setInterimText("");
       },
       () => {
-        // stop() を呼んだときだけここに来る（自動再起動は speech.ts 内で処理）
         setIsRecording(false);
         setInterimText("");
-      }
+      },
+      lang
     );
     recognizerRef.current = recognizer;
     recognizer.start();
     setIsRecording(true);
-  }, []);
+  }, [lang]);
 
   const stopRecording = useCallback(() => {
     recognizerRef.current?.stop();
@@ -129,6 +132,47 @@ export default function AudioRecorder() {
         </div>
       )}
 
+      {/* 言語選択 + マイクヒント */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-1">
+          <label className="text-sm text-gray-500 shrink-0">言語</label>
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value as LangCode)}
+            disabled={isRecording}
+            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+          >
+            {SUPPORTED_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={() => setShowMicTip((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-indigo-500 transition"
+          title="小さい音が認識されない場合"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          小さい音が聞こえない場合
+        </button>
+      </div>
+
+      {showMicTip && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-3 text-sm space-y-1">
+          <p className="font-medium">音声認識の精度を上げるには：</p>
+          <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+            <li>OSのマイク入力音量を上げる（システム設定 → サウンド → 入力）</li>
+            <li>マイクに近づいて話す（15〜30cm が目安）</li>
+            <li>外付けマイクや高感度マイクを使う</li>
+            <li>静かな環境で録音する</li>
+          </ul>
+          <p className="text-xs text-blue-500 mt-1">※ Web Speech API の仕様上、アプリ側での音量閾値の調整はできません</p>
+        </div>
+      )}
+
       <div className="relative">
         <textarea
           ref={textareaRef}
@@ -138,7 +182,6 @@ export default function AudioRecorder() {
           className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 text-sm resize-none focus:outline-none leading-relaxed"
         />
 
-        {/* 録音中ステータスバー */}
         {isRecording && (
           <div className="absolute top-3 right-3 flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg px-2.5 py-1 shadow-sm border border-red-100">
             <span className="relative flex h-2.5 w-2.5">
@@ -149,7 +192,6 @@ export default function AudioRecorder() {
           </div>
         )}
 
-        {/* 認識中テキスト */}
         {isRecording && interimText && (
           <div className="absolute bottom-3 left-4 right-16 pointer-events-none">
             <span className="text-indigo-400 text-sm italic opacity-80">{interimText}</span>
@@ -157,7 +199,6 @@ export default function AudioRecorder() {
         )}
       </div>
 
-      {/* 文字数カウント */}
       <p className="text-xs text-gray-400 text-right">{finalText.length} 文字</p>
 
       <div className="flex flex-wrap gap-3">

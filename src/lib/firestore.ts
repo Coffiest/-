@@ -22,11 +22,11 @@ export async function saveTranscription(
   userId: string,
   text: string
 ): Promise<string> {
-  const ref = await addDoc(collection(db, "users", userId, "transcriptions"), {
-    text,
-    createdAt: serverTimestamp(),
-    userId,
-  });
+  if (!userId) throw new Error("userId is empty");
+  const ref = await addDoc(
+    collection(db, "users", userId, "transcriptions"),
+    { text, createdAt: serverTimestamp(), userId }
+  );
   return ref.id;
 }
 
@@ -53,7 +53,5 @@ export async function deleteTranscription(
   userId: string,
   transcriptionId: string
 ): Promise<void> {
-  await deleteDoc(
-    doc(db, "users", userId, "transcriptions", transcriptionId)
-  );
+  await deleteDoc(doc(db, "users", userId, "transcriptions", transcriptionId));
 }

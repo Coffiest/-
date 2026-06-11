@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { SpeechRecognizer, SUPPORTED_LANGUAGES, LangCode } from "@/lib/speech";
+import { translateToJa } from "@/lib/translate";
 import { saveTranscription } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,12 +14,20 @@ export default function AudioRecorder() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const [copyMsg, setCopyMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [lang, setLang] = useState<LangCode>("ja-JP");
+  const [translateOn, setTranslateOn] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [showMicTip, setShowMicTip] = useState(false);
   const recognizerRef = useRef<SpeechRecognizer | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const translateOnRef = useRef(translateOn);
+  const langRef = useRef(lang);
+
+  useEffect(() => { translateOnRef.current = translateOn; }, [translateOn]);
+  useEffect(() => { langRef.current = lang; }, [lang]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -38,18 +47,34 @@ export default function AudioRecorder() {
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  const handleLangChange = useCallback((newLang: LangCode) => {
+    setLang(newLang);
+    // 録音中なら recognizer に伝えて即座に切り替え
+    if (recognizerRef.current) {
+      recognizerRef.current.switchLang(newLang);
+    }
+  }, []);
+
   const startRecording = useCallback(() => {
     setError("");
     setSavedMsg("");
     setElapsed(0);
     setShowMicTip(false);
+
     const recognizer = new SpeechRecognizer(
-      (transcript, isFinal) => {
-        if (isFinal) {
-          setFinalText((prev) => prev + transcript);
-          setInterimText("");
-        } else {
+      async (transcript, isFinal) => {
+        if (!isFinal) {
           setInterimText(transcript);
+          return;
+        }
+        setInterimText("");
+        if (translateOnRef.current && langRef.current !== "ja-JP") {
+          setTranslating(true);
+          const translated = await translateToJa(transcript, langRef.current);
+          setTranslating(false);
+          setFinalText((prev) => prev + translated);
+        } else {
+          setFinalText((prev) => prev + transcript);
         }
       },
       (err) => {
@@ -60,6 +85,7 @@ export default function AudioRecorder() {
       () => {
         setIsRecording(false);
         setInterimText("");
+        setTranslating(false);
       },
       lang
     );
@@ -73,16 +99,40 @@ export default function AudioRecorder() {
     recognizerRef.current = null;
   }, []);
 
+  const handleCopyAll = async () => {
+    const text = finalText + (isRecording ? interimText : "");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMsg("コピーしました！");
+      setTimeout(() => setCopyMsg(""), 2000);
+    } catch {
+      setError("クリップボードへのコピーに失敗しました");
+    }
+  };
+
   const handleSave = async () => {
-    if (!user || !finalText.trim()) return;
+    if (!user) {
+      setError("ログインが必要です");
+      return;
+    }
+    if (!finalText.trim()) return;
     setSaving(true);
+    setError("");
     try {
       await saveTranscription(user.uid, finalText.trim());
       setSavedMsg("保存しました！");
       setFinalText("");
       setTimeout(() => setSavedMsg(""), 3000);
-    } catch {
-      setError("保存に失敗しました");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("permission-denied") || msg.includes("PERMISSION_DENIED")) {
+        setError("保存に失敗しました。Firebase ConsoleのFirestoreルールを確認してください（permission-denied）");
+      } else if (msg.includes("not-found")) {
+        setError("Firestoreデータベースが見つかりません。Firebase ConsoleでFirestoreを有効にしてください");
+      } else {
+        setError(`保存に失敗しました: ${msg}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -118,9 +168,10 @@ export default function AudioRecorder() {
   }
 
   const displayText = finalText + (isRecording ? interimText : "");
+  const isJa = lang === "ja-JP";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
           {error}
@@ -131,32 +182,51 @@ export default function AudioRecorder() {
           {savedMsg}
         </div>
       )}
-
-      {/* 言語選択 + マイクヒント */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 flex-1">
-          <label className="text-sm text-gray-500 shrink-0">言語</label>
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value as LangCode)}
-            disabled={isRecording}
-            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
-          >
-            {SUPPORTED_LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>{l.label}</option>
-            ))}
-          </select>
+      {copyMsg && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg px-4 py-3 text-sm">
+          {copyMsg}
         </div>
+      )}
+
+      {/* 言語・翻訳・ヒント */}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-gray-500 shrink-0">言語</label>
+        <select
+          value={lang}
+          onChange={(e) => handleLangChange(e.target.value as LangCode)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          {SUPPORTED_LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code}>{l.label}</option>
+          ))}
+        </select>
+
+        {/* 翻訳トグル（日本語選択中は不要なので非表示） */}
+        {!isJa && (
+          <button
+            onClick={() => setTranslateOn((v) => !v)}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition font-medium ${
+              translateOn
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+            </svg>
+            日本語に翻訳
+            {translating && <span className="ml-1 animate-spin">⏳</span>}
+          </button>
+        )}
 
         <button
           onClick={() => setShowMicTip((v) => !v)}
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-indigo-500 transition"
-          title="小さい音が認識されない場合"
+          className="ml-auto text-xs text-gray-400 hover:text-indigo-500 transition flex items-center gap-1"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          小さい音が聞こえない場合
+          音が聞こえない場合
         </button>
       </div>
 
@@ -165,7 +235,7 @@ export default function AudioRecorder() {
           <p className="font-medium">音声認識の精度を上げるには：</p>
           <ul className="list-disc list-inside space-y-0.5 text-blue-700">
             <li>OSのマイク入力音量を上げる（システム設定 → サウンド → 入力）</li>
-            <li>マイクに近づいて話す（15〜30cm が目安）</li>
+            <li>マイクに近づいて話す（15〜30cm 目安）</li>
             <li>外付けマイクや高感度マイクを使う</li>
             <li>静かな環境で録音する</li>
           </ul>
@@ -173,6 +243,7 @@ export default function AudioRecorder() {
         </div>
       )}
 
+      {/* テキストエリア */}
       <div className="relative">
         <textarea
           ref={textareaRef}
@@ -201,7 +272,9 @@ export default function AudioRecorder() {
 
       <p className="text-xs text-gray-400 text-right">{finalText.length} 文字</p>
 
-      <div className="flex flex-wrap gap-3">
+      {/* ボタン群 */}
+      <div className="flex flex-wrap gap-2">
+        {/* 録音開始/停止 */}
         {!isRecording ? (
           <button
             onClick={startRecording}
@@ -224,6 +297,19 @@ export default function AudioRecorder() {
           </button>
         )}
 
+        {/* 全コピー（録音中でも押せる） */}
+        <button
+          onClick={handleCopyAll}
+          disabled={!displayText}
+          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-medium px-5 py-2.5 rounded-lg transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          全コピー
+        </button>
+
+        {/* 保存 */}
         <button
           onClick={handleSave}
           disabled={!finalText.trim() || saving}
@@ -235,6 +321,7 @@ export default function AudioRecorder() {
           {saving ? "保存中..." : "保存"}
         </button>
 
+        {/* ダウンロード */}
         <button
           onClick={handleDownload}
           disabled={!finalText.trim()}
@@ -246,6 +333,7 @@ export default function AudioRecorder() {
           ダウンロード
         </button>
 
+        {/* クリア */}
         <button
           onClick={handleClear}
           disabled={!displayText && elapsed === 0}

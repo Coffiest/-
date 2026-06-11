@@ -44,6 +44,15 @@ export class SpeechRecognizer {
     );
   }
 
+  /** 録音中でも言語を切り替える。onend → 自動再起動で新しい lang が適用される */
+  switchLang(lang: LangCode): void {
+    this.lang = lang;
+    if (!this.stopped && this.recognition) {
+      // stop() → onend → restart() の流れで新言語が反映される
+      this.recognition.stop();
+    }
+  }
+
   private createRecognition(): SpeechRecognition {
     const SpeechRecognitionClass =
       window.webkitSpeechRecognition ?? window.SpeechRecognition;
@@ -61,7 +70,6 @@ export class SpeechRecognizer {
     };
 
     r.onerror = (event: SpeechRecognitionErrorEvent) => {
-      // no-speech / network は無音や一時的な切断なので自動復帰、エラー表示しない
       if (event.error === "no-speech" || event.error === "network") return;
       if (event.error === "not-allowed" || event.error === "audio-capture") {
         this.stopped = true;
@@ -78,7 +86,6 @@ export class SpeechRecognizer {
         this.onEnd();
         return;
       }
-      // ユーザーが停止していなければ自動再起動
       this.restartTimer = setTimeout(() => {
         if (!this.stopped) this.restart();
       }, 200);
